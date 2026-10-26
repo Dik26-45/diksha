@@ -103,6 +103,18 @@ export const Navbar: React.FC = () => {
               </Link>
 
               <Link
+                to="/track/SFR-2026-8812"
+                className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  location.pathname.startsWith('/track')
+                    ? 'bg-rose-50 text-rose-700 font-semibold'
+                    : 'text-rose-600 hover:text-rose-700 hover:bg-rose-50/50'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                Relative Tracking
+              </Link>
+
+              <Link
                 to="/ai-matches"
                 className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 ${
                   isActive('/ai-matches')
