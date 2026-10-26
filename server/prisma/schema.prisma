@@ -1,0 +1,295 @@
+// Prisma Schema for SAFAR AI - "Your Route. Your People. Your Journey."
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  PASSENGER
+  RIDE_PROVIDER
+  ADMIN
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RideStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  SIMULATED_PAID
+  PENDING
+  REFUNDED
+}
+
+enum SafetyReportCategory {
+  HARASSMENT
+  UNSAFE_DRIVING
+  ROUTE_DEVIATION
+  SUSPICIOUS_BEHAVIOR
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  UNDER_INVESTIGATION
+  RESOLVED
+  DISMISSED
+}
+
+enum EmergencyStatus {
+  ACTIVE
+  RESOLVED
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  passwordHash       String
+  fullName           String
+  phone              String?
+  role               Role                @default(PASSENGER)
+  gender             Gender              @default(PREFER_NOT_TO_SAY)
+  isVerified         Boolean             @default(false)
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  verificationDocUrl String?
+  avatarUrl          String?
+  bio                String?
+  ratingAvg          Float               @default(5.0)
+  totalRatingsCount  Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  vehicles           Vehicle[]
+  ridesOffered       Ride[]              @relation("OfferedRides")
+  bookings           Booking[]
+  userPreference     UserPreference?
+  rideMatches        RideMatch[]
+  ratingsGiven       Rating[]            @relation("RatingsGiven")
+  ratingsReceived    Rating[]            @relation("RatingsReceived")
+  notifications      Notification[]
+  safetyReports      SafetyReport[]      @relation("ReportedByUser")
+  emergencyEvents    EmergencyEvent[]    @relation("UserEmergencyEvents")
+
+  @@index([email])
+}
+
+model Vehicle {
+  id           String   @id @default(uuid())
+  userId       String
+  make         String
+  model        String
+  year         Int
+  color        String
+  licensePlate String   @unique
+  capacity     Int      @default(4)
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rides        Ride[]
+
+  @@index([userId])
+}
+
+model Ride {
+  id                   String        @id @default(uuid())
+  providerId           String
+  vehicleId            String?
+  originAddress        String
+  originLat            Float
+  originLng            Float
+  destAddress          String
+  destLat              Float
+  destLng              Float
+  departureTime        DateTime
+  estimatedArrivalTime DateTime?
+  totalSeats           Int
+  availableSeats       Int
+  pricePerSeat         Float
+  status               RideStatus    @default(SCHEDULED)
+  isWomenOnly          Boolean       @default(false)
+  notes                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  provider             User          @relation("OfferedRides", fields: [providerId], references: [id], onDelete: Cascade)
+  vehicle              Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  bookings             Booking[]
+  trips                Trip[]
+  matches              RideMatch[]
+  safetyReports        SafetyReport[]
+  emergencyEvents      EmergencyEvent[]
+
+  @@index([originLat, originLng])
+  @@index([destLat, destLng])
+  @@index([departureTime])
+  @@index([status])
+  @@index([isWomenOnly])
+}
+
+model Booking {
+  id               String        @id @default(uuid())
+  rideId           String
+  passengerId      String
+  seatCount        Int           @default(1)
+  totalPrice       Float
+  status           BookingStatus @default(CONFIRMED)
+  paymentStatus    PaymentStatus @default(SIMULATED_PAID)
+  paymentMethod    String        @default("SIMULATED_WALLET")
+  bookingReference String        @unique
+  cancelledAt      DateTime?
+  cancellationReason String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  ride             Ride          @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passenger        User          @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  @@index([rideId])
+  @@index([passengerId])
+}
+
+model UserPreference {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  maxWalkDistanceKm  Float    @default(2.0)
+  musicPreference    String   @default("ANY") // ANY, QUIET, POP, INSTRUMENTAL
+  smokingAllowed     Boolean  @default(false)
+  petsAllowed        Boolean  @default(false)
+  quietRide          Boolean  @default(false)
+  womenOnlyPreferred Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RideMatch {
+  id                      String   @id @default(uuid())
+  userId                  String
+  rideId                  String
+  overallScore            Float    // 0 - 100
+  pickupProximityScore    Float    // weight: 30%
+  destProximityScore      Float    // weight: 30%
+  timeCompatibilityScore  Float    // weight: 20%
+  routeCompatibilityScore Float    // weight: 15%
+  preferenceScore         Float    // weight: 5%
+  explanation             String
+  createdAt               DateTime @default(now())
+
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ride                    Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([userId, rideId])
+}
+
+model Trip {
+  id          String     @id @default(uuid())
+  rideId      String
+  status      String     @default("NOT_STARTED") // NOT_STARTED, STARTED, COMPLETED, ABORTED
+  currentLat  Float?
+  currentLng  Float?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  ride        Ride       @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId])
+}
+
+model Rating {
+  id          String   @id @default(uuid())
+  reviewerId  String
+  revieweeId  String
+  rideId      String
+  rating      Int      // 1 to 5
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  reviewer    User     @relation("RatingsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee    User     @relation("RatingsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@index([reviewerId])
+  @@index([revieweeId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   // BOOKING, RIDE_UPDATE, SAFETY, VERIFICATION, SYSTEM
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SafetyReport {
+  id          String               @id @default(uuid())
+  reporterId  String
+  rideId      String?
+  category    SafetyReportCategory
+  description String
+  status      ReportStatus         @default(OPEN)
+  adminNotes  String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  reporter    User                 @relation("ReportedByUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  ride        Ride?                @relation(fields: [rideId], references: [id], onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([status])
+}
+
+model EmergencyEvent {
+  id              String          @id @default(uuid())
+  userId          String
+  rideId          String?
+  lat             Float
+  lng             Float
+  message         String
+  emergencyNumber String          @default("112")
+  status          EmergencyStatus @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation("UserEmergencyEvents", fields: [userId], references: [id], onDelete: Cascade)
+  ride            Ride?           @relation(fields: [rideId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+}
